@@ -21,15 +21,29 @@
 
 BEGIN;
 
+-- Defaults, so the single-account case can still be run with just usr and pwd.
+\if :{?email}      \else \set email      '' \endif
+\if :{?firstname}  \else \set firstname  '' \endif
+\if :{?lastname}   \else \set lastname   '' \endif
+\if :{?mustchange} \else \set mustchange 'no' \endif
+
 SELECT set_config('nars.usr', :'usr', true) AS _ \gset
 SELECT set_config('nars.pwd', :'pwd', true) AS _ \gset
+SELECT set_config('nars.email', :'email', true) AS _ \gset
+SELECT set_config('nars.first', :'firstname', true) AS _ \gset
+SELECT set_config('nars.last', :'lastname', true) AS _ \gset
+SELECT set_config('nars.must', :'mustchange', true) AS _ \gset
 
 DO $$
 DECLARE
-  v_usr  TEXT := current_setting('nars.usr');
-  v_pwd  TEXT := current_setting('nars.pwd');
-  v_id   TEXT;
-  v_n    INT;
+  v_usr   TEXT := current_setting('nars.usr');
+  v_pwd   TEXT := current_setting('nars.pwd');
+  v_email TEXT := nullif(current_setting('nars.email'), '');
+  v_first TEXT := nullif(current_setting('nars.first'), '');
+  v_last  TEXT := nullif(current_setting('nars.last'), '');
+  v_must  BOOL := lower(current_setting('nars.must')) IN ('yes','true','y','1');
+  v_id    TEXT;
+  v_n     INT;
 BEGIN
   IF length(v_pwd) < 10 THEN
     RAISE EXCEPTION 'The password must be at least 10 characters.';
@@ -47,7 +61,12 @@ BEGIN
            status               = 'active',
            locked_until         = NULL,
            failed_attempts      = 0,
-           must_change_password = FALSE
+           must_change_password = v_must,
+           -- Only overwrite these if a real value was supplied, so re-running
+           -- the single-account form does not blank out someone's name.
+           email      = coalesce(v_email, email),
+           first_name = coalesce(v_first, first_name),
+           last_name  = coalesce(v_last,  last_name)
      WHERE lower(username) = lower(v_usr);
     RAISE NOTICE 'Existing account "%" moved into the Health Department group.', v_usr;
   ELSE
@@ -72,12 +91,13 @@ BEGIN
        role, user_group, password_hash, status,
        failed_attempts, must_change_password)
     VALUES
-      (v_id, v_usr, lower(v_usr) || '@databytes.sc',
-       initcap(split_part(v_usr, '.', 1)),
-       initcap(coalesce(NULLIF(split_part(v_usr, '.', 2), ''), 'Assessor')),
+      (v_id, v_usr,
+       coalesce(v_email, lower(v_usr) || '@health.gov.sc'),
+       coalesce(v_first, initcap(split_part(v_usr, '.', 1))),
+       coalesce(v_last,  initcap(NULLIF(split_part(v_usr, '.', 2), '')), 'Assessor'),
        'health_assessor', 'Health',
        crypt(v_pwd, gen_salt('bf', 10)), 'active',
-       0, FALSE);
+       0, v_must);
     RAISE NOTICE 'Created "%" as a Health Department assessor (%).', v_usr, v_id;
   END IF;
 END $$;
@@ -109,7 +129,11 @@ SELECT username,
        CASE WHEN user_group = 'Health'
             THEN 'yes - NARS will accept it'
             ELSE 'NO - NARS will refuse it'
-       END AS "nars will accept"
+       END AS "nars will accept",
+       CASE WHEN must_change_password
+            THEN 'yes - they pick their own at first sign-in'
+            ELSE 'no'
+       END AS "must change password"
   FROM system_users
  WHERE lower(username) = lower(:'usr');
 
