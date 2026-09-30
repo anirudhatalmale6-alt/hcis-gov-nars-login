@@ -1,0 +1,85 @@
+NARS - CREATE A HEALTH DEPARTMENT LOGIN ON THE GOVERNMENT BOX
+=============================================================
+
+
+WHAT THIS FIXES
+
+  NARS on the Government box says:
+
+    "This account is not in the Health Department group, so it has no
+     access to the Needs Assessment module. Please use HCIS instead."
+
+  Important: that message means your password was RIGHT. You signed in
+  successfully and NARS then turned the account away.
+
+
+WHY
+
+  NARS checks the GROUP, not the role. It lets through accounts whose
+  group is exactly "Health", and refuses everyone else - a super_admin
+  included. The Needs Assessment module belongs to the Health Department,
+  so that is correct behaviour rather than a fault.
+
+  Your Evans account on that box is super_admin in the "Super Admin"
+  group, so it is refused. And no other account there helps: the
+  Government box has NO Health Department accounts at all. Its accounts
+  were loaded before the NARS work existed.
+
+  On the office server there are six (evans.nars, fiona.paulin,
+  marylene.lucas, r.burka, vlmarie, nars.qa) - which is why it works
+  there. Those accounts live only on that machine. The two boxes have
+  separate databases and share nothing.
+
+
+WHAT TO DO
+
+  1. Copy this folder onto the Government box.
+  2. Double-click  MAKE-NARS-LOGIN.bat
+  3. Press Enter to accept the suggested username (evans.nars), or type
+     a different one.
+  4. Type a password, twice. It is masked - it will not appear on screen
+     and will not be in any screenshot you send me.
+
+  It prints a table saying, in words, whether the password works and
+  whether NARS will accept the account. Read that rather than trusting
+  the absence of an error.
+
+  Then open  http://localhost/nars/  and sign in with it.
+
+
+WHAT IT CHANGES
+
+  One account, the one you name. Nothing else - no other account, no
+  existing group, no assessment data, and nothing in HCIS.
+
+  If the account already exists it is repaired rather than duplicated:
+  moved into the Health group, given the assessor role, password set,
+  switched on. Running it twice is safe and leaves one account.
+
+  Keep using Evans for HCIS itself. This new one is for NARS.
+
+
+A NOTE ON THE TWO PASSWORDS
+
+  The account this creates is a SEPARATE account on the Government box,
+  even though the suggested name matches the office one. It has its own
+  password. Changing one does not change the other.
+
+
+HOW IT WAS CHECKED
+
+  Not by reading the code. A copy of the real database was made, its
+  Health accounts removed so it matched the Government box, and the
+  script run against it:
+
+    - creating a new account, and re-running it (one row, same id)
+    - a password under 10 characters: refused, exit code 3, and the
+      account NOT created
+    - every other account's group counted before and after: unchanged
+    - hcis_login() called for the new account - it returns
+      user_group = Health and a token, which is exactly what NARS reads
+    - a wrong password returns no rows
+
+  The database password handling was tested separately against a
+  stand-in psql, because a missing one does not fail - it silently waits
+  for input and looks like a freeze.
