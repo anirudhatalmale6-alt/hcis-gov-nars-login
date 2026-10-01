@@ -31,7 +31,7 @@ param(
     # The same default the catch-up package uses, so this just runs. Without it
     # psql prompts for the database password on its own and the window sits
     # there looking frozen, which is what happened the first time.
-    [string]$DbPassword = 'HcisStaging@2026',
+    [string]$DbPassword = '',
     [string]$PgBin    = ''
 )
 
@@ -94,7 +94,13 @@ if (-not $Password) { Say 'Nothing typed. Stopping without changing anything.' '
 # psql reads the database password from this. Without it, it prompts once per
 # call and the window just sits there looking frozen - which is exactly what
 # happened when this was first moved out of the .bat.
-if ($DbPassword -and -not $env:PGPASSWORD) { $env:PGPASSWORD = $DbPassword }
+# The database password is no longer written into this file - it used to be,
+# and these scripts are published publicly. db-access.ps1 finds it: already in
+# the environment, or saved on this machine by SET-DB-PASSWORD.bat, or it asks
+# once. Without it psql stops and waits for input and the window looks frozen.
+if ($DbPassword) { $env:PGPASSWORD = $DbPassword }
+. (Join-Path $PSScriptRoot 'db-access.ps1')
+if (-not (Set-DbPassword)) { exit 1 }
 
 Write-Host ''
 Say ("Creating `"{0}`" as a Health Department assessor..." -f $Username)
